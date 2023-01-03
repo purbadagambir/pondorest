@@ -18,11 +18,13 @@ Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
 
+# Member
 Route::post('/auth', 'ApiCustomerController@memberLogin');
 Route::post('/member', 'ApiCustomerController@getMember');
 Route::post('/customerCredit', 'ApiCustomerController@customerCredit');
 Route::post('/point', 'ApiCustomerController@getPointData');
 
-
+# Transactions
 Route::post('/salesInfo', 'ApiSalesController@getSalesInfo');
 Route::post('/addPoint', 'ApiSalesController@insertSalesData');
+Route::post('/addCredit', 'ApiSalesController@insertCredit');

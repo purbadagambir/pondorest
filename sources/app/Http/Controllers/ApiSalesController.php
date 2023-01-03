@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\{Sales, PointLogs, Customer};
+use App\{Sales, PointLogs, Customer, CustomerTransactions};
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -96,6 +96,81 @@ class ApiSalesController extends Controller
                 $headers['Code'] = '201';
                 $headers['Message'] = 'Error : ' . $th->getMessage();
                 $data = $input['order_number'] . ' Error Insert';
+                return json_encode(['metadata' => $headers, 'data' => $data]);
+            }
+        } else {
+            $headers['Code'] = '201';
+            $headers['Message'] = 'Not Valid Request data';
+            $data = null;
+            return json_encode(['metadata' => $headers, 'data' => $data]);
+        }
+    }
+
+    public function insertCredit(Request $request)
+    {
+        $input = $request->all();
+
+        $validator = Validator::make($input, [
+            'customer_mobile' => 'required',
+            'order_number' => 'required',
+            'store_id' => 'required',
+            'pmethod_id' => 'required',
+            'amount' => 'required'
+        ]);
+
+        if (!$validator->fails()) {
+            try {
+                $member = Customer::select('customer_id')->where('customer_mobile',  $input['customer_mobile'])->first();
+                if ($member) {
+                    $member_id = $member->customer_id;
+                } else {
+                    $metadata['Code'] = '404';
+                    $metadata['Message'] = 'Data Customer tidak ditemukan.';
+                    $data = null;
+                    return response(['metadata' => $metadata, 'data' => $data]);
+                }
+
+                $credit = CustomerTransactions::select('id', 'amount', 'balance')->where('customer_id', $member_id)->orderby('id', 'desc')->first();
+
+                DB::beginTransaction();
+
+                $newCredit = $credit->balance + $input['amount'];
+
+                DB::table('customer_transactions')->insert([
+                    'type' => 'add_balance',
+                    'ref_invoice_id' => $input['order_number'],
+                    'store_id' => $input['store_id'],
+                    'customer_id' => $member_id,
+                    'amount' => $input['amount'],
+                    'balance' => $newCredit,
+                    'notes' => 'add while shoping',
+                    'created_by' => 0,
+                    'created_at' => date('Y-m-d h:i:s')
+                ]);
+
+                DB::table('customers')->where('customer_id', $member_id)->update([
+                    'credit' => $newCredit,
+                ]);
+
+                DB::table('customer_to_store')->where('customer_id', $member_id)->update([
+                    'balance' => $newCredit,
+                ]);
+
+                DB::commit();
+
+                $headers['Code'] = '200';
+                $headers['Message'] = 'Ok';
+                $data['mobile_no'] = $input['customer_mobile'];
+                $data['prev_balace'] = $credit['balance'];
+                $data['amount'] = $input['amount'];
+                $data['balance'] = $newCredit;
+
+                return json_encode(['metadata' => $headers, 'response' => $data]);
+            } catch (\Throwable $th) {
+                DB::rollback();
+                $headers['Code'] = '201';
+                $headers['Message'] = 'Error : ' . $th->getMessage();
+                $data = $input['order_number'] . ' Error Insert ';
                 return json_encode(['metadata' => $headers, 'data' => $data]);
             }
         } else {
